@@ -9,7 +9,12 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.graphics.createBitmap
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.MultiTransformation
+import com.bumptech.glide.request.RequestOptions
+import jp.wasabeef.glide.transformations.BlurTransformation
+import jp.wasabeef.glide.transformations.GrayscaleTransformation
+import jp.wasabeef.glide.transformations.gpu.*
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.*
@@ -28,181 +33,143 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SecondActivity::class.java))
         }
         imageview = findViewById(R.id.test)
+        val bitmap = BitmapFactory.decodeResource(resources, R.drawable.img_2)
 
-        val bitmap = BitmapFactory.decodeResource(resources, R.drawable.rohit)
-        removeMultipleColors(bitmap)
+        //opencv
 //        removeBackground2(bitmap)
-//        opencvRemovebg(bitmap)
-//        removebackground()
-//        getreducedcolor(bitmap,.5f)
-//        reduceAlpha(bitmap, 0.5f)
-//        reduceAlphaForColor(bitmap,4201728,0.5f)
-    }
+
+        //Threshold
+//        separateForegroundFromBackground(bitmap)
 
 
-    fun removebackground(){
+        //Glide
+        convertToSketch(bitmap)
 
-        val bitmap = BitmapFactory.decodeResource(resources, R.drawable.tim)
-        val resultBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(resultBitmap)
-        val paint = Paint().apply {
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-        }
-        canvas.drawBitmap(bitmap, 0f, 0f, null)
-        canvas.drawRect(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), paint)
-        imageview?.setImageBitmap(resultBitmap)
 
-    }
-    fun getcolors(bitmap: Bitmap,factor:Float) {
-        val colors = mutableListOf<Pair<Int, Pair<Int, Int>>>()
-        var color = 0
-        val reducedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(reducedBitmap)
-        var hexColor: String
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                color = Color.red(pixel) shl 16 or (Color.green(pixel) shl 8) or Color.blue(pixel)
-                val alpha = (Color.alpha(pixel) * factor).toInt()
-                val colorx = Color.argb(alpha, Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-                hexColor = Integer.toHexString(color) // assign value to hexColor
-                colors.add(Pair(color, x to y))
-                reducedBitmap.setPixel(x, y, colorx)
-            }
-        }
-        imageview?.setImageBitmap(reducedBitmap)
-
-        //if the color hex is different for the same coordinates then group them
-        val uniqueColors = colors.groupByTo(mutableMapOf()) { entry ->
-            entry.first // use color hex value as key
-        }.mapValues { entry ->
-            entry.value.map { it.second } // extract only the coordinates from the group
-        }
-
-        Log.d("uniqueColors", uniqueColors.toString())
-
+        /*
+        Another approach
+        convrtBitmap(bitmap)
+        opencvRemovebg(bitmap)
+        removebackground()
+        getreducedcolor(bitmap,.5f)
+        reduceAlpha(bitmap, 0.5f)
+        reduceAlphaForColor(bitmap,4201728,0.5f)
+        */
 
     }
 
-    fun opencvRemovebg(bitmap: Bitmap){
-        val mat = Mat()
-        Utils.bitmapToMat(bitmap, mat)
 
-        Imgproc.cvtColor(mat, mat, Imgproc.COLOR_RGB2GRAY)
-        Utils.matToBitmap(mat, bitmap)
-        imageview?.setImageBitmap(bitmap)
 
-    }
-
-    fun removeBackground(bitmap: Bitmap){
-        // Convert the input bitmap to grayscale
-        val grayscaleBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(grayscaleBitmap)
+    fun separateForegroundFromBackground(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val grayBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(grayBitmap)
         val paint = Paint()
-        val cm = ColorMatrix(floatArrayOf(
-            0.299f, 0.587f, 0.114f, 0f, 0f,
-            0.299f, 0.587f, 0.114f, 0f, 0f,
-            0.299f, 0.587f, 0.114f, 0f, 0f,
-            0f, 0f, 0f, 1f, 0f
-        ))
-        paint.colorFilter = ColorMatrixColorFilter(cm)
+
+        // Create a color matrix that converts color to grayscale
+        val colorMatrix = ColorMatrix()
+        colorMatrix.setSaturation(0f)
+
+        // Apply the color matrix to the paint
+        val colorFilter = ColorMatrixColorFilter(colorMatrix)
+        paint.colorFilter = colorFilter
+
+        // Draw the bitmap on the canvas using the paint
         canvas.drawBitmap(bitmap, 0f, 0f, paint)
 
-        // Apply thresholding to create a binary mask
-        val threshold = 255 // Choose a threshold value between 0 and 255.
-        val binaryBitmap = Bitmap.createBitmap(grayscaleBitmap.width, grayscaleBitmap.height, Bitmap.Config.ARGB_8888)
-        for (x in 0 until grayscaleBitmap.width) {
-            for (y in 0 until grayscaleBitmap.height) {
-                val pixel = grayscaleBitmap.getPixel(x, y)
+        // Apply a Gaussian blur filter to the grayscale image
+        val blurredBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val blurRadius = 5f
+        val blurFilter = BlurMaskFilter(blurRadius, BlurMaskFilter.Blur.NORMAL)
+        val blurPaint = Paint()
+        blurPaint.maskFilter = blurFilter
+        val blurCanvas = Canvas(blurredBitmap)
+        blurCanvas.drawBitmap(grayBitmap, 0f, 0f, blurPaint)
+
+        //otsu method
+
+
+        // Compute the histogram of the blurred grayscale image
+        val histogram = IntArray(256)
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                val pixel = blurredBitmap.getPixel(x, y)
                 val gray = Color.red(pixel)
-                val binary = if (gray > threshold) Color.WHITE else Color.BLACK
-                binaryBitmap.setPixel(x, y, binary)
+                histogram[gray]++
             }
         }
 
-        // Extract the foreground pixels using the binary mask
-        val outputBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas2 = Canvas(outputBitmap)
-        val paint2 = Paint()
-        paint2.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-        canvas2.drawBitmap(bitmap, 0f, 0f, null)
-        canvas2.drawBitmap(binaryBitmap, 0f, 0f, paint2)
+        // Compute the total number of pixels
+        val total = width * height
 
-        // Return the processed image
-        imageview?.setImageBitmap(outputBitmap)
+        // Compute the sum of grayscale levels
+        var sum = 0
+        for (i in 0..255) {
+            sum += i * histogram[i]
+        }
+
+        // Compute the sum of variances for all possible thresholds
+        var w = 0
+        var sumB = 0
+        var varMax = 0.0
+        var threshold = 0
+        for (i in 0..255) {
+            w += histogram[i]
+            if (w == 0) continue
+            val w1 = w.toDouble() / total
+            val w2 = 1.0 - w1
+            sumB += i * histogram[i]
+            val m1 = sumB.toDouble() / w
+            val m2 = (sum - sumB).toDouble() / (total - w)
+            val varBetween = w1 * w2 * (m1 - m2) * (m1 - m2)
+            if (varBetween > varMax) {
+                varMax = varBetween
+                threshold = i
+            }
+        }
+
+        // Create a binary bitmap with the foreground in white and the background in black
+        val binaryBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                val pixel = grayBitmap.getPixel(x, y)
+                val gray = Color.red(pixel)
+                val color = if (gray < threshold) Color.BLACK else Color.WHITE
+                binaryBitmap.setPixel(x, y, color)
+            }
+        }
+
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                val pixel = binaryBitmap.getPixel(x, y)
+                val invertedColor = if (pixel == Color.BLACK) Color.WHITE else Color.BLACK
+                binaryBitmap.setPixel(x, y, invertedColor)
+            }
+        }
+
+        imageview?.setImageBitmap(binaryBitmap)
+
+        return binaryBitmap
     }
 
-    fun getreducedcolor(bitmap: Bitmap,factor:Float) {
-        val colors = mutableListOf<Pair<Int, Pair<Int, Int>>>()
-        var color: Int
-        var colorx= 0
-        val reducedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(reducedBitmap)
-        var hexColor: String
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                color = Color.red(pixel) shl 16 or (Color.green(pixel) shl 8) or Color.blue(pixel)
-                reducedBitmap.setPixel(x,y,color)
-                if(color == 4267520){
-                    val alpha = (Color.alpha(pixel) * factor).toInt()
-                    colorx = Color.argb(alpha, Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-                    hexColor = Integer.toHexString(color)// assign value to hexColor
-                    colors.add(Pair(color, x to y))
-                    reducedBitmap.setPixel(x, y, Color.WHITE)
-                }
-            }
+
+    fun convertToSketch(bitmap: Bitmap) {
+
+        //set stroke width
+        val multi = MultiTransformation(
+            SketchFilterTransformation(),
+            GrayscaleTransformation(),
+//                InvertFilterTransformation(),
+//                BlurTransformation(10, 1) ,
+//                ToonFilterTransformation()
+//                PixelationFilterTransformation(),
+        )
+        // pass this transform to the removeBackground2 method
+        imageview?.let {
+            Glide.with(this).load(bitmap)
+                .apply(RequestOptions.bitmapTransform(multi)).into(it)
         }
-        imageview?.setImageBitmap(reducedBitmap)
-    }
-
-
-    fun reduceAlpha(bitmap: Bitmap, factor: Float) {
-        val reducedBitmap =
-            Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(reducedBitmap)
-        val colors = mutableListOf<Pair<Int, Pair<Int, Int>>>()
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                val alpha = (Color.alpha(pixel) * factor).toInt()
-                val color =
-                    Color.argb(alpha, Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-                val hexColor = Integer.toHexString(color)
-                colors.add(Pair(color, x to y))
-                reducedBitmap.setPixel(x, y, color)
-            }
-        }
-        // Do something with the reduced colors list here
-//        val uniqueColors = colors.groupByTo(mutableMapOf()) { entry ->
-//            entry.first // use color hex value as key
-//        }.mapValues { entry ->
-//            entry.value.map { it.second } // extract only the coordinates from the group
-//        }
-
-//        Log.d("reducedalpha",uniqueColors.toString())
-        imageview?.setImageBitmap(reducedBitmap)
-
-    }
-
-    //function to reduce particular pixel
-    fun reduceAlphaForColor(bitmap: Bitmap, colorToReduce: Int, factor: Float) {
-        val colors = mutableListOf<Pair<Int, Pair<Int, Int>>>()
-        val reducedBitmap =
-            Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(reducedBitmap)
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                val alpha = (Color.alpha(pixel) * factor).toInt()
-                val color =
-                    Color.argb(alpha, Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-
-                reducedBitmap.setPixel(x, y, color)
-
-            }
-        }
-        // Do something with the modified bitmap here
     }
 
     fun removeBackground2(bitmap: Bitmap?): Bitmap? {
@@ -244,41 +211,40 @@ class MainActivity : AppCompatActivity() {
         imageview?.setImageBitmap(bitmap)
         return bitmap
     }
-    fun removeMultipleColors(bitmap: Bitmap){
-        // Convert the bitmap to a 4-channel Mat with an alpha channel
-        val image = Mat()
-        Utils.bitmapToMat(bitmap, image)
-        val rgba = Mat()
-        Imgproc.cvtColor(image, rgba, Imgproc.COLOR_BGR2RGBA)
 
-// Apply image processing to create a mask that selects the background
-        val mask = Mat()
-        Imgproc.cvtColor(rgba, mask, Imgproc.COLOR_RGBA2GRAY)
-        Imgproc.threshold(mask, mask, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel)
-        val contours = ArrayList<MatOfPoint>()
-        val hierarchy = Mat()
-        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
-        var largestContour = contours[0]
-        for (i in 1 until contours.size) {
-            if (Imgproc.contourArea(contours[i]) > Imgproc.contourArea(largestContour)) {
-                largestContour = contours[i]
-            }
-        }
-        Imgproc.drawContours(mask, listOf(largestContour), 0, Scalar(255.0), -1)
+    private fun convrtBitmap(bitmap: Bitmap): Bitmap {
+        // Convert bitmap to Mat
+        val mat = Mat(bitmap.width, bitmap.height, CvType.CV_8UC4)
+        val bmp32 = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        org.opencv.android.Utils.bitmapToMat(bmp32, mat)
 
-// Copy the processed image into a new Mat with an alpha channel
-        val result = Mat(rgba.rows(), rgba.cols(), CvType.CV_8UC4, Scalar(255.0, 255.0, 255.0, 0.0))
-        rgba.copyTo(result, mask)
+        // Convert to grayscale
+        Imgproc.cvtColor(mat, mat, Imgproc.COLOR_BGR2GRAY)
 
-// Convert the resulting Mat to a Bitmap with an alpha channel
-        val resultBitmap = Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888)
-        Utils.matToBitmap(result, resultBitmap)
+        // Invert image
+        Core.bitwise_not(mat, mat)
 
-// Set the resulting Bitmap to the ImageView
-        imageview?.setImageBitmap(resultBitmap)
+        // Apply Gaussian blur
+        Imgproc.GaussianBlur(mat, mat, Size(3.0, 3.0), 0.0)
+
+        // Apply dodge blend
+        val sketch = Mat(mat.size(), CvType.CV_8UC1)
+        val temp = Mat(mat.size(), CvType.CV_8UC1)
+        val maxValue = 255.0
+        val scalar = Scalar(maxValue)
+        Core.subtract(mat, scalar, temp)
+        Core.divide(maxValue, temp, temp)
+        Core.divide(maxValue, mat, sketch)
+        Core.add(sketch, temp, sketch)
+        Core.multiply(sketch, scalar, sketch)
+
+        // Convert back to bitmap
+        val sketchBitmap =
+            Bitmap.createBitmap(sketch.cols(), sketch.rows(), Bitmap.Config.ARGB_8888)
+        org.opencv.android.Utils.matToBitmap(sketch, sketchBitmap)
+
+        imageview?.setImageBitmap(sketchBitmap)
+
+        return sketchBitmap
     }
-
-
 }
