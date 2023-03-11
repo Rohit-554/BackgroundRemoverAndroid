@@ -4,7 +4,6 @@ import android.content.Intent
 import android.graphics.*
 import android.graphics.Point
 import android.os.Bundle
-import android.util.Log
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -12,7 +11,6 @@ import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.MultiTransformation
 import com.bumptech.glide.request.RequestOptions
-import jp.wasabeef.glide.transformations.BlurTransformation
 import jp.wasabeef.glide.transformations.GrayscaleTransformation
 import jp.wasabeef.glide.transformations.gpu.*
 import org.opencv.android.OpenCVLoader
@@ -36,7 +34,7 @@ class MainActivity : AppCompatActivity() {
         val bitmap = BitmapFactory.decodeResource(resources, R.drawable.img_2)
 
         //opencv
-//        removeBackground2(bitmap)
+      //  removeMultipleColors(bitmap)
 
         //Threshold
 //        separateForegroundFromBackground(bitmap)
@@ -55,6 +53,17 @@ class MainActivity : AppCompatActivity() {
         reduceAlpha(bitmap, 0.5f)
         reduceAlphaForColor(bitmap,4201728,0.5f)
         */
+
+    }
+
+
+    fun khatamKaro(){
+        val matrix = ColorMatrix()
+        matrix.setSaturation(0F)
+
+        val filter = ColorMatrixColorFilter(matrix)
+        imageview?.colorFilter = filter
+
 
     }
 
@@ -246,5 +255,41 @@ class MainActivity : AppCompatActivity() {
         imageview?.setImageBitmap(sketchBitmap)
 
         return sketchBitmap
+    }
+
+    fun removeMultipleColors(bitmap: Bitmap){
+        // Convert the bitmap to a 4-channel Mat with an alpha channel
+        val image = Mat()
+        Utils.bitmapToMat(bitmap, image)
+        val rgba = Mat()
+        Imgproc.cvtColor(image, rgba, Imgproc.COLOR_BGR2RGBA)
+
+// Apply image processing to create a mask that selects the background
+        val mask = Mat()
+        Imgproc.cvtColor(rgba, mask, Imgproc.COLOR_RGBA2GRAY)
+        Imgproc.threshold(mask, mask, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel)
+        val contours = ArrayList<MatOfPoint>()
+        val hierarchy = Mat()
+        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
+        var largestContour = contours[0]
+        for (i in 1 until contours.size) {
+            if (Imgproc.contourArea(contours[i]) > Imgproc.contourArea(largestContour)) {
+                largestContour = contours[i]
+            }
+        }
+        Imgproc.drawContours(mask, listOf(largestContour), 0, Scalar(255.0), -1)
+
+// Copy the processed image into a new Mat with an alpha channel
+        val result = Mat(rgba.rows(), rgba.cols(), CvType.CV_8UC4, Scalar(255.0, 255.0, 255.0, 0.0))
+        rgba.copyTo(result, mask)
+
+// Convert the resulting Mat to a Bitmap with an alpha channel
+        val resultBitmap = Bitmap.createBitmap(result.cols(), result.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(result, resultBitmap)
+
+// Set the resulting Bitmap to the ImageView
+        imageview?.setImageBitmap(resultBitmap)
     }
 }
